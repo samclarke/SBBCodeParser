@@ -27,18 +27,29 @@ abstract class SBBCodeParser_Node
 {
 	/**
 	 * Nodes parent
-	 * @var SBBCodeParser_Node
+	 * @var SBBCodeParser_ContainerNode
 	 */
 	protected $parent;
+	
+	/**
+	 * Nodes root parent
+	 * @var SBBCodeParser_ContainerNode
+	 */
+	protected $root;
 
 
 	/**
 	 * Sets the nodes parent
 	 * @param SBBCodeParser_Node $parent
 	 */
-	public function set_parent(SBBCodeParser_Node $parent=null)
+	public function set_parent(SBBCodeParser_ContainerNode $parent=null)
 	{
 		$this->parent = $parent;
+		
+		if($parent instanceof SBBCodeParser_Document)
+			$this->root = $parent;
+		else
+			$this->root = $parent->root();
 	}
 
 	/**
@@ -65,13 +76,7 @@ abstract class SBBCodeParser_Node
 	 */
 	public function root()
 	{
-		$root = $this->parent();
-		
-		while($this->parent() != null
-			&& !$root instanceof SBBCodeParser_Document)
-			$root = $root->parent();
-		
-		return $root;
+		return $this->root;
 	}
 	
 	/**
@@ -185,22 +190,41 @@ abstract class SBBCodeParser_ContainerNode extends SBBCodeParser_Node
 	 * Gets a HTML representation of this node 
 	 * @return string
 	 */
-	public function get_html()
+	public function get_html($nl2br=true)
 	{
 		$html = '';
 		
 		foreach($this->children as $child)
-			$html .= $child->get_html();
+			$html .= $child->get_html($nl2br);
 		
 		if($this instanceof SBBCodeParser_Document)
 			return $html;
 		
 		$bbcode = $this->root()->get_bbcode($this->tag);
 			
-		if(is_callable($bbcode->handler()))
-			return call_user_func($bbcode->handler(), $html, $this->attribs, $this);
+		if(is_callable($bbcode->handler()) && ($func = $bbcode->handler()) !== false)
+			return $func($html, $this->attribs, $this);
+			//return call_user_func($bbcode->handler(), $html, $this->attribs, $this);
 
 		return str_replace('%content%', $html, $bbcode->handler());
+	}
+	
+	/**
+	 * Gets the raw text content of this node
+	 * and it's children.
+	 * 
+	 * The returned text is UNSAFE and should not
+	 * be used without filtering!
+	 * @return string
+	 */
+	public function get_text()
+	{
+		$text = '';
+		
+		foreach($this->children as $child)
+			$text .= $child->get_text();
+		
+		return $text;
 	}
 }
 
@@ -214,8 +238,11 @@ class SBBCodeParser_TextNode extends SBBCodeParser_Node
 		$this->text = $text;
 	}
 	
-	public function get_html()
+	public function get_html($nl2br=true)
 	{
+		if(!$nl2br)
+			return str_replace("  ", " &nbsp;", htmlentities($this->text, ENT_QUOTES | ENT_IGNORE, "UTF-8"));
+		
 		return str_replace("  ", " &nbsp;", nl2br(htmlentities($this->text, ENT_QUOTES | ENT_IGNORE, "UTF-8")));
 	}
 	
@@ -402,6 +429,8 @@ class SBBCodeParser_Document extends SBBCodeParser_ContainerNode
 		$this->add_bbcodes(array(
 		    	new SBBCodeParser_BBCode('b', '<strong>%content%</strong>'),
 			new SBBCodeParser_BBCode('i', '<em>%content%</em>'),
+			new SBBCodeParser_BBCode('strong', '<strong>%content%</strong>'),
+			new SBBCodeParser_BBCode('em', '<em>%content%</em>'),
 			new SBBCodeParser_BBCode('u', '<span style="text-decoration: underline">%content%</span>'),
 			new SBBCodeParser_BBCode('s', '<span style="text-decoration: line-through">%content%</span>'),
 			new SBBCodeParser_BBCode('sub', '<sub>%content%</sub>'),
@@ -425,12 +454,21 @@ class SBBCodeParser_Document extends SBBCodeParser_ContainerNode
 			new SBBCodeParser_BBCode('wikipedia', '<a href="http://www.wikipedia.org/wiki/%content%">%content%</a>'),
 			new SBBCodeParser_BBCode('youtube', function($content, $attribs)
 			{
-				if(substr($content, 0, 4) === 'http')
+				if(substr($content, 0, 23) === 'http://www.youtube.com/')
 					$uri = $content;
 				else
 					$uri = 'http://www.youtube.com/v/' . $content;
 
 				return '<iframe width="480" height="390" src="' . $uri . '" frameborder="0"></iframe>';
+			}),
+			new SBBCodeParser_BBCode('vimeo', function($content, $attribs)
+			{
+				if(substr($content, 0, 24) === 'http://player.vimeo.com/')
+					$uri = $content;
+				else
+					$uri = 'http://player.vimeo.com/video/' . $content . '?title=0&amp;byline=0&amp;portrait=0';
+
+				return '<iframe src="' . $uri . '" width="400" height="225" frameborder="0"></iframe>';
 			}),
 			new SBBCodeParser_BBCode('flash', function($content, $attribs)
 			{
@@ -484,12 +522,29 @@ class SBBCodeParser_Document extends SBBCodeParser_ContainerNode
 		</div>
 	</div>
 </div>'),
-			
-		    	new SBBCodeParser_BBCode('code', '<code>%content%</code>'),
-		    	new SBBCodeParser_BBCode('php', function($content, $attribs)
+
+		    	new SBBCodeParser_BBCode('tt', '<span style="font-family: monospace">%content%</span>'),
+
+		    	new SBBCodeParser_BBCode('pre', function($content, $attribs, $node)
+			{
+				$content = '';
+				foreach($node->children() as $child)
+					$content .= $child->get_html(false);
+
+				return "<pre>{$content}</pre>";
+			}, false, array(), array('text_node')),
+		    	new SBBCodeParser_BBCode('code', function($content, $attribs, $node)
+			{
+				$content = '';
+				foreach($node->children() as $child)
+					$content .= $child->get_html(false);
+
+				return "<pre><code>{$content}</code></pre>";
+			}, false, array(), array('text_node')),
+		    	new SBBCodeParser_BBCode('php', function($content, $attribs, $node)
 			{
 				ob_start();
-				highlight_string(str_replace(array('<br />', '<br>'), "", html_entity_decode($content, ENT_QUOTES, "UTF-8")));
+				highlight_string($node->get_text());
 				$content = ob_get_contents();
 				ob_end_clean();
 
@@ -499,8 +554,8 @@ class SBBCodeParser_Document extends SBBCodeParser_ContainerNode
 			new SBBCodeParser_BBCode('quote', function($content, $attribs, $node)
 			{
 				$cite = '';
-				if($attribs['default'] !== '')
-					$cite = "<cite>{$attribs['default']}</cite>";
+				if(!empty($attribs['default']))
+					$cite = "<cite>{$attribs['default']}:</cite>";
 
 				if($node->find_parent_by_tag('quote') !== null)
 					return "</p><blockquote><p>{$cite}{$content}</p></blockquote><p>";
@@ -633,6 +688,7 @@ class SBBCodeParser_Document extends SBBCodeParser_ContainerNode
 		
 			new SBBCodeParser_BBCode('notag', '%content%', false, array(), array('text_node')),
 			new SBBCodeParser_BBCode('nobbc', '%content%', false, array(), array('text_node')),
+			new SBBCodeParser_BBCode('noparse', '%content%', false, array(), array('text_node')),
 		
 			new SBBCodeParser_BBCode('h1', '<h1>%content%</h1>'),
 			new SBBCodeParser_BBCode('h2', '<h2>%content%</h2>'),
@@ -641,6 +697,9 @@ class SBBCodeParser_Document extends SBBCodeParser_ContainerNode
 			new SBBCodeParser_BBCode('h5', '<h5>%content%</h5>'),
 			new SBBCodeParser_BBCode('h6', '<h6>%content%</h6>'),
 			new SBBCodeParser_BBCode('h7', '<h7>%content%</h7>'),
+
+			new SBBCodeParser_BBCode('big', '<span style="font-size: large">%content%</span>'),
+			new SBBCodeParser_BBCode('small', '<span style="font-size: x-small">%content%</span>'),
 			// tables use this tag so can't be a header.
 			//new SBBCodeParser_BBCode('h', '<h5>%content%</h5>'),
 	
@@ -671,13 +730,38 @@ class SBBCodeParser_Document extends SBBCodeParser_ContainerNode
 
 				return "<a href=\"#{$attribs['default']}\">{$content}</a>";
 			}),
+			new SBBCodeParser_BBCode('jumpto', function($content, $attribs, $node)
+			{
+				if(empty($attribs['default']))
+					$attribs['default'] = $content;
+
+				$attribs['default'] = preg_replace('/[^a-zA-Z0-9_\-#]+/', '', $attribs['default']);
+
+				return "<a href=\"#{$attribs['default']}\">{$content}</a>";
+			}),
 	
 			new SBBCodeParser_BBCode('img', function($content, $attribs, $node)
 			{
 				$attrs = '';
 				
-				if(!empty($attribs['default']))
+				// for when default attrib is used for width x height
+				if(isset($attribs['default']) && preg_match("/[0-9]+[Xx\*][0-9]+/", $attribs['default']))
+				{
+					list($attribs['width'],$attribs['height']) = explode('x', $attribs['default']);
+					$attribs['default'] = '';
+				}
+				// for when width & height are specified as the default attrib
+				else if(isset($attribs['default']) && is_numeric($attribs['default']))
+				{
+					$attribs['width'] = $attribs['height'] = $attribs['default'];
+					$attribs['default'] = '';
+				}
+				
+				// add alt tag if is one
+				if(isset($attribs['default']) && !empty($attribs['default']))
 					$attrs .= " alt=\"{$attribs['default']}\"";
+				else if(isset($attribs['alt']))
+					$attrs .= " alt=\"{$attribs['alt']}\"";
 				else
 					$attrs .= " alt=\"{$content}\"";
 
@@ -784,6 +868,15 @@ class SBBCodeParser_Document extends SBBCodeParser_ContainerNode
 			$bbcode = $bbcode->tag();
 		
 		unset($this->bbcodes[$bbcode]);
+	}
+	
+	/**
+	 * Gets an array of bbcode tags that will currently be processed
+	 * @return array
+	 */
+	public function list_bbcodes()
+	{
+		return array_keys($this->bbcodes);
 	}
 	
 	/**
@@ -1019,111 +1112,92 @@ class SBBCodeParser_Document extends SBBCodeParser_ContainerNode
 		return $ret;
 	}
 	
-	public function detect_links($node=null)
+	private function loop_text_nodes($func, array $exclude=array(), SBBCodeParser_ContainerNode $node=null)
 	{
 		if($node === null)
 			$node = $this;
-
+		
 		foreach($node->children() as $child)
 		{
 			if($child instanceof SBBCodeParser_TagNode)
 			{
-				// skip urls and images. This should at some point
-				// be added to the BBCode object instead of hard coded
-				if($child->tag() !== 'url'
-					&& $child->tag() !== 'img'
-					&& $child->tag() !== 'email'
-					&& $child->tag() !== 'youtube'
-					&& $child->tag() !== 'wikipedia'
-					&& $child->tag() !== 'google')
-					$this->detect_links($child);
+				if(!in_array($child->tag(), $exclude))
+					 $this->loop_text_nodes($func, $exclude, $child);
 			}
 			else if($child instanceof SBBCodeParser_TextNode)
 			{
-				preg_match_all("/(?:(?:https?|ftp):\/\/|(?:www|ftp)\.)(?:[a-zA-Z0-9\-\.]{1,255}\.[a-zA-Z]{1,20})(?:[\S]+)/",
-					$child->get_text(),
-					$matches,
-					PREG_PATTERN_ORDER | PREG_OFFSET_CAPTURE);
-
-				if(count($matches[0]) == 0)
-					continue;
-				
-				$replacment = array();
-				$last_pos   = 0;
-
-				foreach($matches[0] as $match)
-				{
-					if(substr($match[0], 0, 3) === 'ftp' && $match[0][3] !== ':')
-						$url = 'ftp://' . $match[0];
-					else if($match[0][0] === 'w')
-						$url = 'http://' . $match[0];
-					else
-						$url = $match[0];
-		
-					$url      = new SBBCodeParser_TagNode('url', array('default' => htmlentities($url, ENT_QUOTES | ENT_IGNORE, "UTF-8")));
-					$url_text = new SBBCodeParser_TextNode($match[0]);
-					$url->add_child($url_text);
-
-					$replacment[] = new SBBCodeParser_TextNode(substr($child->get_text(), $last_pos, $match[1] - $last_pos));
-					$replacment[] = $url;
-					$last_pos = $match[1] + strlen($match[0]);
-				}
-				
-				$replacment[] = new SBBCodeParser_TextNode(substr($child->get_text(), $last_pos));
-				$child->parent()->replace_child($child, $replacment);
+				$func($child);
 			}
 		}
-		
+	}
+	
+	public function detect_links($node=null)
+	{
+		$this->loop_text_nodes(function($child) {
+			preg_match_all("/(?:(?:https?|ftp):\/\/|(?:www|ftp)\.)(?:[a-zA-Z0-9\-\.]{1,255}\.[a-zA-Z]{1,20})(?::[0-9]{1,5})?(?:\/[\S]*)?(?:(?<![,\)\.])|[\S])/",
+			$child->get_text(),
+			$matches,
+			PREG_PATTERN_ORDER | PREG_OFFSET_CAPTURE);
+
+			if(count($matches[0]) == 0)
+				return;
+
+			$replacment = array();
+			$last_pos   = 0;
+
+			foreach($matches[0] as $match)
+			{
+				if(substr($match[0], 0, 3) === 'ftp' && $match[0][3] !== ':')
+					$url = 'ftp://' . $match[0];
+				else if($match[0][0] === 'w')
+					$url = 'http://' . $match[0];
+				else
+					$url = $match[0];
+
+				$url      = new SBBCodeParser_TagNode('url', array('default' => htmlentities($url, ENT_QUOTES | ENT_IGNORE, "UTF-8")));
+				$url_text = new SBBCodeParser_TextNode($match[0]);
+				$url->add_child($url_text);
+
+				$replacment[] = new SBBCodeParser_TextNode(substr($child->get_text(), $last_pos, $match[1] - $last_pos));
+				$replacment[] = $url;
+				$last_pos = $match[1] + strlen($match[0]);
+			}
+
+			$replacment[] = new SBBCodeParser_TextNode(substr($child->get_text(), $last_pos));
+			$child->parent()->replace_child($child, $replacment);
+		}, array('url', 'img', 'email', 'youtube', 'vimeo', 'nobbc', 'notag', 'wikipedia', 'google'));
+
 		return $this;
 	}
 	
 	public function detect_emails($node=null)
 	{
-		if($node === null)
-			$node = $this;
+		$this->loop_text_nodes(function($child) {
+			preg_match_all("/(?:[a-zA-Z0-9\-\._]){1,}@(?:[a-zA-Z0-9\-\.]{1,255}\.[a-zA-Z]{1,20})/",
+				$child->get_text(),
+				$matches,
+				PREG_PATTERN_ORDER | PREG_OFFSET_CAPTURE);
 
-		foreach($node->children() as $child)
-		{
-			if($child instanceof SBBCodeParser_TagNode)
+			if(count($matches[0]) == 0)
+				return;
+
+			$replacment = array();
+			$last_pos   = 0;
+
+			foreach($matches[0] as $match)
 			{
-				// skip urls and images. This should at some point
-				// be added to the BBCode object instead of hard coded
-				if($child->tag() !== 'url'
-					&& $child->tag() !== 'img'
-					&& $child->tag() !== 'email'
-					&& $child->tag() !== 'youtube'
-					&& $child->tag() !== 'wikipedia'
-					&& $child->tag() !== 'google')
-					$this->detect_links($child);
+				$url      = new SBBCodeParser_TagNode('email', array());
+				$url_text = new SBBCodeParser_TextNode($match[0]);
+				$url->add_child($url_text);
+
+				$replacment[] = new SBBCodeParser_TextNode(substr($child->get_text(), $last_pos, $match[1] - $last_pos));
+				$replacment[] = $url;
+				$last_pos = $match[1] + strlen($match[0]);
 			}
-			else if($child instanceof SBBCodeParser_TextNode)
-			{
-				preg_match_all("/(?:[a-zA-Z0-9\-\._]){1,}@(?:[a-zA-Z0-9\-\.]{1,255}\.[a-zA-Z]{1,20})/",
-					$child->get_text(),
-					$matches,
-					PREG_PATTERN_ORDER | PREG_OFFSET_CAPTURE);
 
-				if(count($matches[0]) == 0)
-					continue;
-				
-				$replacment = array();
-				$last_pos   = 0;
-
-				foreach($matches[0] as $match)
-				{
-					$url      = new SBBCodeParser_TagNode('email', array());
-					$url_text = new SBBCodeParser_TextNode($match[0]);
-					$url->add_child($url_text);
-
-					$replacment[] = new SBBCodeParser_TextNode(substr($child->get_text(), $last_pos, $match[1] - $last_pos));
-					$replacment[] = $url;
-					$last_pos = $match[1] + strlen($match[0]);
-				}
-				
-				$replacment[] = new SBBCodeParser_TextNode(substr($child->get_text(), $last_pos));
-				$child->parent()->replace_child($child, $replacment);
-			}
-		}
+			$replacment[] = new SBBCodeParser_TextNode(substr($child->get_text(), $last_pos));
+			$child->parent()->replace_child($child, $replacment);
+		}, array('url', 'img', 'email', 'youtube', 'vimeo', 'nobbc', 'notag', 'wikipedia', 'google'));
 		
 		return $this;
 	}
@@ -1131,56 +1205,39 @@ class SBBCodeParser_Document extends SBBCodeParser_ContainerNode
 	// TODO: tidy this 3 detect functions up
 	public function detect_emoticons($node=null)
 	{
-		if($node === null)
-			$node = $this;
-		
 		$pattern = '';
 		foreach($this->emoticons as $key => $url)
 			$pattern .= ($pattern === ''? '/(?:':'|') . preg_quote($key, '/');
-		$pattern .= ')/';	
+		$pattern .= ')/';
+		
+		$emoticons = $this->emoticons;
 
-		foreach($node->children() as $child)
-		{
-			if($child instanceof SBBCodeParser_TagNode)
+		$this->loop_text_nodes(function($child) use ($pattern, $emoticons) {
+			preg_match_all($pattern,
+				$child->get_text(),
+				$matches,
+				PREG_PATTERN_ORDER | PREG_OFFSET_CAPTURE);
+
+			if(count($matches[0]) == 0)
+				return;
+
+			$replacment = array();
+			$last_pos   = 0;
+
+			foreach($matches[0] as $match)
 			{
-				// skip urls and images. This should at some point
-				// be added to the BBCode object instead of hard coded
-				if($child->tag() !== 'url'
-					&& $child->tag() !== 'img'
-					&& $child->tag() !== 'email'
-					&& $child->tag() !== 'youtube'
-					&& $child->tag() !== 'wikipedia'
-					&& $child->tag() !== 'google')
-					$this->detect_links($child);
+				$url      = new SBBCodeParser_TagNode('img', array('alt'=>$match[0]));
+				$url_text = new SBBCodeParser_TextNode($emoticons[$match[0]]);
+				$url->add_child($url_text);
+
+				$replacment[] = new SBBCodeParser_TextNode(substr($child->get_text(), $last_pos, $match[1] - $last_pos));
+				$replacment[] = $url;
+				$last_pos = $match[1] + strlen($match[0]);
 			}
-			else if($child instanceof SBBCodeParser_TextNode)
-			{
-				preg_match_all($pattern,
-					$child->get_text(),
-					$matches,
-					PREG_PATTERN_ORDER | PREG_OFFSET_CAPTURE);
 
-				if(count($matches[0]) == 0)
-					continue;
-				
-				$replacment = array();
-				$last_pos   = 0;
-
-				foreach($matches[0] as $match)
-				{
-					$url      = new SBBCodeParser_TagNode('img', array());
-					$url_text = new SBBCodeParser_TextNode($this->emoticons[$match[0]]);
-					$url->add_child($url_text);
-
-					$replacment[] = new SBBCodeParser_TextNode(substr($child->get_text(), $last_pos, $match[1] - $last_pos));
-					$replacment[] = $url;
-					$last_pos = $match[1] + strlen($match[0]);
-				}
-				
-				$replacment[] = new SBBCodeParser_TextNode(substr($child->get_text(), $last_pos));
-				$child->parent()->replace_child($child, $replacment);
-			}
-		}
+			$replacment[] = new SBBCodeParser_TextNode(substr($child->get_text(), $last_pos));
+			$child->parent()->replace_child($child, $replacment);
+		}, array('url', 'img', 'email', 'youtube', 'vimeo', 'nobbc', 'notag', 'wikipedia', 'google', 'code'));
 		
 		return $this;
 	}
