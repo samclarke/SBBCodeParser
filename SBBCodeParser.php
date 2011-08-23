@@ -6,6 +6,11 @@
  *
  * @copyright (C) 2011 Sam Clarke (samclarke.com)
  * @license http://www.gnu.org/licenses/lgpl.html LGPL version 3 or higher
+ *
+ * @TODO: Add inline/block to tags and forbid adding block elements to inline ones.
+ * Maybe split the inline elemnt and put the block element inbetween?
+ * @TODO: Have options for limiting nesting of tags
+ * @TODO: Have whitespace trimming options for tags
  */
 
 /*
@@ -22,6 +27,19 @@
  * You should have received a copy of the GNU Lesser General Public
  * License along with this library.  If not, see <http://www.gnu.org/licenses/>.
  */
+
+class SBBCodeParser_Exception extends Exception
+{
+}
+
+class SBBCodeParser_MissingEndTagException extends SBBCodeParser_Exception
+{
+}
+
+class SBBCodeParser_InvalidNestingException extends SBBCodeParser_Exception
+{
+}
+
 
 abstract class SBBCodeParser_Node
 {
@@ -333,7 +351,7 @@ class SBBCodeParser_BBCode
 	 * Which auto detections this BBCode should be excluded from
 	 * @var int
 	 */
-	protected $auto_detect_exclude;
+	protected $is_inline;
 
 	const AUTO_DETECT_EXCLUDE_NONE		= 0;
 	const AUTO_DETECT_EXCLUDE_URL		= 2;
@@ -341,24 +359,30 @@ class SBBCodeParser_BBCode
 	const AUTO_DETECT_EXCLUDE_EMOTICON	= 8;
 	const AUTO_DETECT_EXCLUDE_ALL		= 15;
 
+	const BLOCK_TAG		= false;
+	const INLINE_TAG	= true;
+
 
 	/**
 	 * Creates a new BBCode
 	 * @param string $tag                 Tag this BBCode is for
 	 * @param mixed  $handler             String or function, should return a string
+	 * @param bool   $is_inline           If this tag is an inline tag or a block tag
 	 * @param array  $is_self_closing     If this tag is self closing, I.E. doesn't need [/tag]
 	 * @param array  $closing_tags        Tags which will close this tag
 	 * @param int    $accepted_children   Tags allowed as children of this BBCode. Can also include text_node
-	 * @param type $auto_detect_exclude Which auto detections to exclude this BBCode from
+	 * @param int    $auto_detect_exclude Which auto detections to exclude this BBCode from
 	 */
 	public function __construct($tag,
 		$handler,
+		$is_inline=SBBCodeParser_BBCode::INLINE_TAG,
 		$is_self_closing=false,
 		$closing_tags=array(),
 		$accepted_children=array(),
 		$auto_detect_exclude=SBBCodeParser_BBCode::AUTO_DETECT_EXCLUDE_NONE)
 	{
 		$this->tag                 = $tag;
+		$this->is_inline           = $is_inline;
 		$this->handler             = $handler;
 		$this->is_self_closing     = $is_self_closing;
 		$this->closing_tags        = $closing_tags;
@@ -375,6 +399,15 @@ class SBBCodeParser_BBCode
 		return $this->tag;
 	}
 	
+	/**
+	 * Gets if this BBCode is inline or if it's block
+	 * @return bool
+	 */
+	public function is_inline()
+	{
+		return $this->is_inline;
+	}
+
 	/**
 	 * Gets if this BBCode is self closing
 	 * @return bool
@@ -427,31 +460,50 @@ class SBBCodeParser_Document extends SBBCodeParser_ContainerNode
 	 * Current Tag
 	 * @var SBBCodeParser_ContainerNode
 	 */
-	private $current_tag = null;
-	
+	protected $current_tag = null;
+
 	/**
 	 * Assoc array of all the BBCodes for this document
 	 * @var array
 	 */
-	private $bbcodes = array();
-	
+	protected $bbcodes = array();
+
 	/**
 	 * Base URI to be used for links, images, ect.
 	 * @var string
 	 */
-	private $base_uri = null;
-	
+	protected $base_uri = null;
+
 	/**
 	 * Assoc array of emoticons in smiley_code => smiley_url format
 	 * @var array
 	 */
-	private $emoticons = array();
+	protected $emoticons = array();
+
+	/*
+	 * If to throw errors when encountering bad BBCode or
+	 * to silently try and fix
+	 * @var bool
+	 */
+	protected $throw_errors = false;
 	
 	
-	public function __construct()
+	public function __construct($load_defaults=true, $throw_errors=true)
 	{
+		$this->throw_errors = $throw_errors;
+
 		// Load default BBCodes
-		$this->add_bbcodes(array(
+		if($load_defaults)
+			$this->add_bbcodes($this->default_bbcodes());
+	}
+
+	/**
+	 * Gets an array of the default BBCodes
+	 * @return array
+	 */
+	public static function default_bbcodes()
+	{
+		return array(
 		    	new SBBCodeParser_BBCode('b', '<strong>%content%</strong>'),
 			new SBBCodeParser_BBCode('i', '<em>%content%</em>'),
 			new SBBCodeParser_BBCode('strong', '<strong>%content%</strong>'),
@@ -461,11 +513,13 @@ class SBBCodeParser_Document extends SBBCodeParser_ContainerNode
 			new SBBCodeParser_BBCode('blink', '<span style="text-decoration: blink">%content%</span>'),
 			new SBBCodeParser_BBCode('sub', '<sub>%content%</sub>'),
 			new SBBCodeParser_BBCode('sup', '<sup>%content%</sup>'),
+			new SBBCodeParser_BBCode('ins', '<ins>%content%</ins>'),
+			new SBBCodeParser_BBCode('del', '<del>%content%</del>'),
 
-			new SBBCodeParser_BBCode('right', '<div style="text-align: right">%content%</div>'),
-			new SBBCodeParser_BBCode('left', '<div style="text-align: left">%content%</div>'),
-			new SBBCodeParser_BBCode('center', '<div style="text-align: center">%content%</div>'),
-			new SBBCodeParser_BBCode('justify', '<div style="text-align: justify">%content%</div>'),
+			new SBBCodeParser_BBCode('right', '<div style="text-align: right">%content%</div>', SBBCodeParser_BBCode::BLOCK_TAG),
+			new SBBCodeParser_BBCode('left', '<div style="text-align: left">%content%</div>', SBBCodeParser_BBCode::BLOCK_TAG),
+			new SBBCodeParser_BBCode('center', '<div style="text-align: center">%content%</div>', SBBCodeParser_BBCode::BLOCK_TAG),
+			new SBBCodeParser_BBCode('justify', '<div style="text-align: justify">%content%</div>', SBBCodeParser_BBCode::BLOCK_TAG),
 
 			// notes only show in editing so ignore it
 			new SBBCodeParser_BBCode('note', ''),
@@ -482,18 +536,18 @@ class SBBCodeParser_Document extends SBBCodeParser_ContainerNode
 
 		    	new SBBCodeParser_BBCode('icq', '<a href="http://www.icq.com/people/about_me.php?uin=%content%">
 				<img  src="http://status.icq.com/online.gif?icq=%content%&amp;img=5"> %content%</a>',
-				false, array(), array('text_node'), SBBCodeParser_BBCode::AUTO_DETECT_EXCLUDE_ALL),
+				SBBCodeParser_BBCode::INLINE_TAG, false, array(), array('text_node'), SBBCodeParser_BBCode::AUTO_DETECT_EXCLUDE_ALL),
 		    	new SBBCodeParser_BBCode('skype', '<a href="skype:jovisa737590?call">
 				<img src="http://mystatus.skype.com/bigclassic/%content%" style="border: none;" width="182"
 				height="44" alt="My status" /></a>',
-				false, array(), array('text_node'), SBBCodeParser_BBCode::AUTO_DETECT_EXCLUDE_ALL),
+				SBBCodeParser_BBCode::INLINE_TAG, false, array(), array('text_node'), SBBCodeParser_BBCode::AUTO_DETECT_EXCLUDE_ALL),
 
 		    	new SBBCodeParser_BBCode('bing', '<a href="http://www.bing.com/search?q=%content%">%content%</a>',
-				false, array(), array('text_node'), SBBCodeParser_BBCode::AUTO_DETECT_EXCLUDE_ALL),
+				SBBCodeParser_BBCode::INLINE_TAG, false, array(), array('text_node'), SBBCodeParser_BBCode::AUTO_DETECT_EXCLUDE_ALL),
 		    	new SBBCodeParser_BBCode('google', '<a href="http://www.google.com/search?q=%content%">%content%</a>',
-				false, array(), array('text_node'), SBBCodeParser_BBCode::AUTO_DETECT_EXCLUDE_ALL),
+				SBBCodeParser_BBCode::INLINE_TAG, false, array(), array('text_node'), SBBCodeParser_BBCode::AUTO_DETECT_EXCLUDE_ALL),
 			new SBBCodeParser_BBCode('wikipedia', '<a href="http://www.wikipedia.org/wiki/%content%">%content%</a>',
-				false, array(), array('text_node'), SBBCodeParser_BBCode::AUTO_DETECT_EXCLUDE_ALL),
+				SBBCodeParser_BBCode::INLINE_TAG, false, array(), array('text_node'), SBBCodeParser_BBCode::AUTO_DETECT_EXCLUDE_ALL),
 			new SBBCodeParser_BBCode('youtube', function($content, $attribs)
 			{
 				if(substr($content, 0, 23) === 'http://www.youtube.com/')
@@ -502,7 +556,7 @@ class SBBCodeParser_Document extends SBBCodeParser_ContainerNode
 					$uri = 'http://www.youtube.com/v/' . $content;
 
 				return '<iframe width="480" height="390" src="' . $uri . '" frameborder="0"></iframe>';
-			}, false, array(), array('text_node'), SBBCodeParser_BBCode::AUTO_DETECT_EXCLUDE_ALL),
+			}, SBBCodeParser_BBCode::BLOCK_TAG, false, array(), array('text_node'), SBBCodeParser_BBCode::AUTO_DETECT_EXCLUDE_ALL),
 			new SBBCodeParser_BBCode('vimeo', function($content, $attribs)
 			{
 				if(substr($content, 0, 24) === 'http://player.vimeo.com/')
@@ -518,28 +572,28 @@ class SBBCodeParser_Document extends SBBCodeParser_ContainerNode
 					$uri = 'http://player.vimeo.com/video/' . $content . '?title=0&amp;byline=0&amp;portrait=0';
 
 				return '<iframe src="' . $uri . '" width="400" height="225" frameborder="0"></iframe>';
-			}, false, array(), array('text_node'), SBBCodeParser_BBCode::AUTO_DETECT_EXCLUDE_ALL),
+			}, SBBCodeParser_BBCode::BLOCK_TAG, false, array(), array('text_node'), SBBCodeParser_BBCode::AUTO_DETECT_EXCLUDE_ALL),
 			new SBBCodeParser_BBCode('flash', function($content, $attribs)
 			{
 				$width = 640;
 				$height = 385;
-				
+			
 				if(substr($content, 0, 4) !== 'http')
 					$content = $node->root()->get_base_uri() . $content;
-				
+			
 				if(isset($attribs['width']) && is_numeric($attribs['width']))
 					$width = $attribs['width'];
 				if(isset($attribs['height']) && is_numeric($attribs['height']))
 					$height = $attribs['height'];
-				
+			
 				// for [flash=200,100] format
 				if(!empty($attribs['default']))
 				{
 					list($w, $h) = explode(',', $attribs['default']);
-					
+				
 					if($w > 20 && is_numeric($w))
 						$width = $w;
-					
+				
 					if($h > 20 && is_numeric($h))
 						$height = $h;
 				}
@@ -551,28 +605,92 @@ class SBBCodeParser_Document extends SBBCodeParser_ContainerNode
 							width="' . $width. '" height="' . $height. '">
 						</embed>
 					</object>';
-			}),
+			}, SBBCodeParser_BBCode::BLOCK_TAG),
 
-				new SBBCodeParser_BBCode('paypal', '<form action="https://www.paypal.com/cgi-bin/webscr" method="post">
-					<input type="hidden" name="cmd" value="_donations">
-					<input type="hidden" name="business" value="%content%">
-					<input type="hidden" name="lc" value="US">
-					<input type="hidden" name="no_note" value="0">
-					<input type="hidden" name="currency_code" value="USD">
-					<input type="hidden" name="bn" value="PP-DonationsBF">
-					<input type="image" src="https://www.paypal.com/en_US/i/btn/x-click-but21.gif" border="0" name="submit" alt="PayPal - The safer, easier way to pay online!">
-					<img alt="" border="0" src="https://www.paypalobjects.com/en_US/i/scr/pixel.gif" width="1" height="1">
-					</form>',
-				false, array(), array('text_node'), SBBCodeParser_BBCode::AUTO_DETECT_EXCLUDE_ALL),
+			new SBBCodeParser_BBCode('paypal', function($content, $attribs)
+			{
+				$content = urlencode($content);
 
+				return '<a href="https://www.paypal.com/cgi-bin/webscr?cmd=_donations&business='
+					. $content . '&lc=US&no_note=0&currency_code=USD&bn=PP%2dDonationsBF%3abtn_donateCC_LG%2egif%3aNonHostedGuest">
+				<img src="https://www.paypal.com/en_US/i/btn/x-click-but21.gif" border="0" name="submit" alt="PayPal - The safer, easier way to pay online!"/></a>';
+			},
+			SBBCodeParser_BBCode::INLINE_TAG, false, array(), array('text_node'), SBBCodeParser_BBCode::AUTO_DETECT_EXCLUDE_ALL),
+
+
+			new SBBCodeParser_BBCode('pastebin', function($content, $attribs)
+			{
+				if(!preg_match("/^[a-zA-Z0-9]$/", $content))
+				{
+					preg_match("#http://pastebin.com/([a-zA-Z0-9]+)#", $content, $matches);
+					$content = '';
+
+					if(isset($matches[1]))
+						$content = $matches[1];
+				}
+
+				return '<script src="http://pastebin.com/embed_js.php?i=' . $content . '"></script>';
+			}, SBBCodeParser_BBCode::INLINE_TAG, false, array(), array('text_node'), SBBCodeParser_BBCode::AUTO_DETECT_EXCLUDE_ALL),
+			new SBBCodeParser_BBCode('gist', function($content, $attribs)
+			{
+				if($content != (string)intval($content))
+				{
+					preg_match("#https://gist.github.com/([0-9]+)#", $content, $matches);
+					$content = '';
+
+					if(isset($matches[1]))
+						$content = $matches[1];
+				}
+				else
+					$content = intval($content);
+
+				return '<script src="http://gist.github.com/' . $content . '.js"></script>';
+			}, SBBCodeParser_BBCode::INLINE_TAG, false, array(), array('text_node'), SBBCodeParser_BBCode::AUTO_DETECT_EXCLUDE_ALL),
+
+			new SBBCodeParser_BBCode('twitter', '<a href="https://twitter.com/%content%"
+				class="twitter-follow-button" data-show-count="false">Follow @%content%</a>
+				<script src="http://platform.twitter.com/widgets.js" type="text/javascript"></script>',
+				SBBCodeParser_BBCode::INLINE_TAG, false, array(), array('text_node'), SBBCodeParser_BBCode::AUTO_DETECT_EXCLUDE_ALL),
+			new SBBCodeParser_BBCode('tweets', "<script src=\"http://widgets.twimg.com/j/2/widget.js\"></script>
+				<script>
+				new TWTR.Widget({
+					version: 2,
+					type: 'profile',
+					rpp: 3,
+					interval: 6000,
+					width: 400,
+					height: 150,
+					theme: {
+						shell: {
+							background: '#333333',
+							color: '#ffffff'
+						},
+						tweets: {
+							background: '#000000',
+							color: '#ffffff',
+							links: '#4aed05'
+						}
+					},
+					features: {
+						scrollbar: false,
+						loop: false,
+						live: false,
+						hashtags: true,
+						timestamp: true,
+						avatars: false,
+						behavior: 'all'
+					}
+				}).render().setUser('%content%').start();
+				</script>",
+				SBBCodeParser_BBCode::INLINE_TAG, false, array(), array('text_node'), SBBCodeParser_BBCode::AUTO_DETECT_EXCLUDE_ALL),
 
 			new SBBCodeParser_BBCode('googlemaps', '<iframe src="http://maps.google.com/maps?q=%content%&amp;output=embed"
 				scrolling="no" width="100%" height="350" frameborder="0"></iframe>',
-				false, array(), array('text_node'), SBBCodeParser_BBCode::AUTO_DETECT_EXCLUDE_ALL),
+				SBBCodeParser_BBCode::BLOCK_TAG, false, array(), array('text_node'), SBBCodeParser_BBCode::AUTO_DETECT_EXCLUDE_ALL),
 
 			new SBBCodeParser_BBCode('pdf', '<iframe src="http://docs.google.com/gview?url=%content%&amp;embedded=true"
 				width="100%" height="500" frameborder="0"></iframe>',
-				false, array(), array('text_node'), SBBCodeParser_BBCode::AUTO_DETECT_EXCLUDE_ALL),
+				SBBCodeParser_BBCode::BLOCK_TAG, false, array(), array('text_node'), SBBCodeParser_BBCode::AUTO_DETECT_EXCLUDE_ALL),
 
 			new SBBCodeParser_BBCode('scribd', function($content, $attribs)
 			{
@@ -594,7 +712,7 @@ class SBBCodeParser_Document extends SBBCodeParser_ContainerNode
 						var s = document.getElementsByTagName("script")[0];
 						s.parentNode.insertBefore(scribd, s);
 					})();</script>';
-			}, true, array(), array(), SBBCodeParser_BBCode::AUTO_DETECT_EXCLUDE_ALL),
+			}, SBBCodeParser_BBCode::BLOCK_TAG, true, array(), array(), SBBCodeParser_BBCode::AUTO_DETECT_EXCLUDE_ALL),
 
 			new SBBCodeParser_BBCode('spoiler', '<div class="spoiler" style="margin:5px 15px 15px 15px">
 				<div style="margin:0 0 2px 0; font-weight:bold;">Spoiler:
@@ -624,9 +742,9 @@ class SBBCodeParser_Document extends SBBCodeParser_ContainerNode
 					$content .= $child->get_html(false);
 
 				return "<pre>{$content}</pre>";
-			}),
+			}, SBBCodeParser_BBCode::BLOCK_TAG),
 		    	new SBBCodeParser_BBCode('code', '<code>%content%</code>',
-				false, array(), array('text_node'), SBBCodeParser_BBCode::AUTO_DETECT_EXCLUDE_EMOTICON),
+				SBBCodeParser_BBCode::BLOCK_TAG, false, array(), array('text_node'), SBBCodeParser_BBCode::AUTO_DETECT_EXCLUDE_EMOTICON),
 		    	new SBBCodeParser_BBCode('php', function($content, $attribs, $node)
 			{
 				ob_start();
@@ -635,8 +753,8 @@ class SBBCodeParser_Document extends SBBCodeParser_ContainerNode
 				ob_end_clean();
 
 				return "<code class=\"php\">{$content}</code>";
-			}, false, array(), array('text_node'), SBBCodeParser_BBCode::AUTO_DETECT_EXCLUDE_EMOTICON),
-			
+			}, SBBCodeParser_BBCode::BLOCK_TAG, false, array(), array('text_node'), SBBCodeParser_BBCode::AUTO_DETECT_EXCLUDE_EMOTICON),
+		
 			new SBBCodeParser_BBCode('quote', function($content, $attribs, $node)
 			{
 				$cite = '';
@@ -645,9 +763,9 @@ class SBBCodeParser_Document extends SBBCodeParser_ContainerNode
 
 				if($node->find_parent_by_tag('quote') !== null)
 					return "</p><blockquote><p>{$cite}{$content}</p></blockquote><p>";
-				
+			
 				return "<blockquote><p>{$cite}{$content}</p></blockquote>";
-			}),
+			}, SBBCodeParser_BBCode::BLOCK_TAG),
 		    
 			new SBBCodeParser_BBCode('font', function($content, $attribs)
 			{
@@ -697,7 +815,7 @@ class SBBCodeParser_Document extends SBBCodeParser_ContainerNode
 						$attribs['default'] = 6;
 					if($attribs['default'] > 48)
 						$attribs['default'] = 48;
-			
+		
 					$size = $attribs['default'] . 'px';
 				}
 
@@ -712,7 +830,7 @@ class SBBCodeParser_Document extends SBBCodeParser_ContainerNode
 
 				return '<span style="color: ' . $attribs['default'] . '">' . $content . '</span>';
 			}),
-	
+
 			new SBBCodeParser_BBCode('list', function($content, $attribs)
 			{
 				$style = 'circle';
@@ -751,34 +869,34 @@ class SBBCodeParser_Document extends SBBCodeParser_ContainerNode
 				}
 
 				return "<{$type} style=\"list-style: {$style}\">{$content}</{$type}>";
-			}, false, array(), array('*', 'li', 'ul', 'li', 'ol', 'list')),
-			new SBBCodeParser_BBCode('ul', '<ul>%content%</ul>'),
-			new SBBCodeParser_BBCode('ol', '<ol>%content%</ol>'),
+			}, SBBCodeParser_BBCode::BLOCK_TAG, false, array(), array('*', 'li', 'ul', 'li', 'ol', 'list')),
+			new SBBCodeParser_BBCode('ul', '<ul>%content%</ul>', SBBCodeParser_BBCode::BLOCK_TAG),
+			new SBBCodeParser_BBCode('ol', '<ol>%content%</ol>', SBBCodeParser_BBCode::BLOCK_TAG),
 			new SBBCodeParser_BBCode('li', '<li>%content%</li>'),
-			new SBBCodeParser_BBCode('*', '<li>%content%</li>', false,
+			new SBBCodeParser_BBCode('*', '<li>%content%</li>', SBBCodeParser_BBCode::BLOCK_TAG, false,
 				array('*', 'li', 'ul', 'li', 'ol', '/list')),
 
-			new SBBCodeParser_BBCode('table', '<table>%content%</table>', false,
-				array(), array('table', 'th', 'h', 'tr', 'row', 'r', 'td', 'col', 'c')),
+			new SBBCodeParser_BBCode('table', '<table>%content%</table>', SBBCodeParser_BBCode::BLOCK_TAG,
+				false, array(), array('table', 'th', 'h', 'tr', 'row', 'r', 'td', 'col', 'c')),
 			new SBBCodeParser_BBCode('th', '<th>%content%</th>'),
 			new SBBCodeParser_BBCode('h', '<th>%content%</th>'),
-			new SBBCodeParser_BBCode('tr', '<tr>%content%</tr>', false,
+			new SBBCodeParser_BBCode('tr', '<tr>%content%</tr>', SBBCodeParser_BBCode::BLOCK_TAG, false,
 				array(), array('table', 'th', 'h', 'tr', 'row', 'r', 'td', 'col', 'c')),
-			new SBBCodeParser_BBCode('row', '<tr>%content%</tr>', false,
+			new SBBCodeParser_BBCode('row', '<tr>%content%</tr>', SBBCodeParser_BBCode::BLOCK_TAG, false,
 				array(), array('table', 'th', 'h', 'tr', 'row', 'r', 'td', 'col', 'c')),
-			new SBBCodeParser_BBCode('r', '<tr>%content%</tr>', false,
+			new SBBCodeParser_BBCode('r', '<tr>%content%</tr>', SBBCodeParser_BBCode::BLOCK_TAG, false,
 				array(), array('table', 'th', 'h', 'tr', 'row', 'r', 'td', 'col', 'c')),
 			new SBBCodeParser_BBCode('td', '<td>%content%</td>'),
 			new SBBCodeParser_BBCode('col', '<td>%content%</td>'),
 			new SBBCodeParser_BBCode('c', '<td>%content%</td>'),
-		
-			new SBBCodeParser_BBCode('notag', '%content%', false, array(), array('text_node'),
+	
+			new SBBCodeParser_BBCode('notag', '%content%', SBBCodeParser_BBCode::INLINE_TAG, false, array(), array('text_node'),
 				SBBCodeParser_BBCode::AUTO_DETECT_EXCLUDE_ALL),
-			new SBBCodeParser_BBCode('nobbc', '%content%', false, array(), array('text_node'),
+			new SBBCodeParser_BBCode('nobbc', '%content%', SBBCodeParser_BBCode::INLINE_TAG, false, array(), array('text_node'),
 				SBBCodeParser_BBCode::AUTO_DETECT_EXCLUDE_ALL),
-			new SBBCodeParser_BBCode('noparse', '%content%', false, array(), array('text_node'),
+			new SBBCodeParser_BBCode('noparse', '%content%', SBBCodeParser_BBCode::INLINE_TAG, false, array(), array('text_node'),
 				SBBCodeParser_BBCode::AUTO_DETECT_EXCLUDE_ALL),
-		
+	
 			new SBBCodeParser_BBCode('h1', '<h1>%content%</h1>'),
 			new SBBCodeParser_BBCode('h2', '<h2>%content%</h2>'),
 			new SBBCodeParser_BBCode('h3', '<h3>%content%</h3>'),
@@ -791,11 +909,11 @@ class SBBCodeParser_Document extends SBBCodeParser_ContainerNode
 			new SBBCodeParser_BBCode('small', '<span style="font-size: x-small">%content%</span>'),
 			// tables use this tag so can't be a header.
 			//new SBBCodeParser_BBCode('h', '<h5>%content%</h5>'),
-	
-			new SBBCodeParser_BBCode('br', '<br />', true),
-			new SBBCodeParser_BBCode('sp', '&nbsp;', true),
-			new SBBCodeParser_BBCode('hr', '<hr />', true),
-	
+
+			new SBBCodeParser_BBCode('br', '<br />', SBBCodeParser_BBCode::INLINE_TAG, true),
+			new SBBCodeParser_BBCode('sp', '&nbsp;', SBBCodeParser_BBCode::INLINE_TAG, true),
+			new SBBCodeParser_BBCode('hr', '<hr />', SBBCodeParser_BBCode::INLINE_TAG, true),
+
 			new SBBCodeParser_BBCode('anchor', function($content, $attribs, $node)
 			{
 				if(empty($attribs['default']))
@@ -805,7 +923,7 @@ class SBBCodeParser_Document extends SBBCodeParser_ContainerNode
 					// usage as test is the anchor
 					$content = '';
 				}
-				
+			
 				$attribs['default'] = preg_replace('/[^a-zA-Z0-9_\-]+/', '', $attribs['default']);
 
 				return "<a name=\"{$attribs['default']}\">{$content}</a>";
@@ -828,11 +946,11 @@ class SBBCodeParser_Document extends SBBCodeParser_ContainerNode
 
 				return "<a href=\"#{$attribs['default']}\">{$content}</a>";
 			}),
-	
+
 			new SBBCodeParser_BBCode('img', function($content, $attribs, $node)
 			{
 				$attrs = '';
-				
+			
 				// for when default attrib is used for width x height
 				if(isset($attribs['default']) && preg_match("/[0-9]+[Xx\*][0-9]+/", $attribs['default']))
 				{
@@ -845,7 +963,7 @@ class SBBCodeParser_Document extends SBBCodeParser_ContainerNode
 					$attribs['width'] = $attribs['height'] = $attribs['default'];
 					$attribs['default'] = '';
 				}
-				
+			
 				// add alt tag if is one
 				if(isset($attribs['default']) && !empty($attribs['default']))
 					$attrs .= " alt=\"{$attribs['default']}\"";
@@ -859,7 +977,7 @@ class SBBCodeParser_Document extends SBBCodeParser_ContainerNode
 					$attrs .= " width=\"{$attribs['width']}\"";
 				if(isset($attribs['height']) && is_numeric($attribs['height']))
 					$attrs .= " height=\"{$attribs['height']}\"";
-		
+	
 				// add http:// to www starting urls
 				if(strpos($content, 'www') === 0)
 					$content = 'http://' . $content;
@@ -869,7 +987,7 @@ class SBBCodeParser_Document extends SBBCodeParser_ContainerNode
 					$content = $node->root()->get_base_uri() . $content;
 
 				return "<img{$attrs} src=\"{$content}\" />";
-			}, false, array(), array('text_node'), SBBCodeParser_BBCode::AUTO_DETECT_EXCLUDE_ALL),	
+			}, SBBCodeParser_BBCode::INLINE_TAG, false, array(), array('text_node'), SBBCodeParser_BBCode::AUTO_DETECT_EXCLUDE_ALL),	
 			new SBBCodeParser_BBCode('email', function($content, $attribs, $node)
 			{
 				if(empty($attribs['default']))
@@ -877,7 +995,7 @@ class SBBCodeParser_Document extends SBBCodeParser_ContainerNode
 
 
 				return "<a href=\"mailto:{$attribs['default']}\">{$content}</a>";
-			}, false, array(), array('text_node'), SBBCodeParser_BBCode::AUTO_DETECT_EXCLUDE_ALL),
+			}, SBBCodeParser_BBCode::INLINE_TAG, false, array(), array('text_node'), SBBCodeParser_BBCode::AUTO_DETECT_EXCLUDE_ALL),
 			new SBBCodeParser_BBCode('url', function($content, $attribs, $node)
 			{
 				if(empty($attribs['default']))
@@ -892,10 +1010,17 @@ class SBBCodeParser_Document extends SBBCodeParser_ContainerNode
 					$attribs['default'] = $node->root()->get_base_uri() . $attribs['default'];
 
 				return "<a href=\"{$attribs['default']}\">{$content}</a>";
-			}, false, array(), array('text_node'), SBBCodeParser_BBCode::AUTO_DETECT_EXCLUDE_ALL)
-		));
+			}, SBBCodeParser_BBCode::INLINE_TAG, false, array(), array('text_node'), SBBCodeParser_BBCode::AUTO_DETECT_EXCLUDE_ALL)
+		);
 	}
-	
+
+	/**
+	 * Adds an emoticon to the parser.
+	 * @param string $key
+	 * @param string $url
+	 * @param bool   $replace If to replace another emoticon with the same key
+	 * @return bool
+	 */
 	public function add_emoticon($key, $url, $replace=true)
 	{
 		if(isset($this->emoticons[$key]) && !$replace)
@@ -904,13 +1029,24 @@ class SBBCodeParser_Document extends SBBCodeParser_ContainerNode
 		$this->emoticons[$key] = $url;
 		return true;
 	}
-	
+
+	/**
+	 * Adds multipule emoticons to the parser. Should be in
+	 * emoticon_key => image_url format.
+	 * @param Array $emoticons
+	 * @param bool $replace If to replace another emoticon with the same key
+	 */
 	public function add_emoticons(Array $emoticons, $replace=true)
 	{
 		foreach($emoticons as $key => $url)
 			$this->add_emoticon($key, $url, $replace);
 	}
-	
+
+	/**
+	 * Removes an emoticon from the parser.
+	 * @param string $key
+	 * @return bool
+	 */
 	public function remove_emoticon($key, $url)
 	{
 		if(!isset($this->emoticons[$key]))
@@ -1070,10 +1206,13 @@ class SBBCodeParser_Document extends SBBCodeParser_ContainerNode
 		}
 		
 		$this->tag_text($tag_text);
+
+		if($this->throw_errors && !$this->current_tag instanceof SBBCodeParser_Document)
+			throw new SBBCodeParser_MissingEndTagException("Missing closing tag for tag [{$this->current_tag->tag()}]");
 		
 		return $this;
 	}
-	
+
 	/**
 	 * Handles a BBCode opening tag
 	 * @param string $tag
@@ -1096,10 +1235,13 @@ class SBBCodeParser_Document extends SBBCodeParser_ContainerNode
 
 			if(!empty($accepted_children) && !in_array($tag, $accepted_children))
 				return false;
+
+			if($this->throw_errors && !$this->bbcodes[$tag]->is_inline()
+				&& $this->bbcodes[$this->current_tag->tag()]->is_inline())
+				throw new SBBCodeParser_InvalidNestingException("Block level tag [{$tag}] was opened within an inline tag [{$this->current_tag->tag()}]");
 		}
-		
+
 		$node = new SBBCodeParser_TagNode($tag, $attrs);
-		
 		$this->current_tag->add_child($node);
 		
 		if(!$this->bbcodes[$tag]->is_self_closing())
@@ -1342,6 +1484,12 @@ class SBBCodeParser_Document extends SBBCodeParser_ContainerNode
 		return $this;
 	}
 
+	/**
+	 * Gets an array of tages to be excluded from
+	 * the elcude param
+	 * @param int $exclude What to gets excluded from i.e. SBBCodeParser_BBCode::AUTO_DETECT_EXCLUDE_EMOTICON
+	 * @return array
+	 */
 	private function get_excluded_tags($exclude)
 	{
 		$ret = array();
