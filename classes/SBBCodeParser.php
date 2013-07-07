@@ -27,15 +27,15 @@
  * You should have received a copy of the GNU Lesser General Public
  * License along with this library.  If not, see <http://www.gnu.org/licenses/>.
  */
- 
-require('classes/Exception.php');
-require('classes/Exception/MissingEndTag.php');
-require('classes/Exception/InvalidNesting.php');
 
-require('classes/Node.php');
-require('classes/Node/Text.php');
-require('classes/Node/Container.php');
-require('classes/Node/Container/Tag.php');
-require('classes/Node/Container/Document.php');
+require('Exception.php');
+require('Exception/MissingEndTag.php');
+require('Exception/InvalidNesting.php');
 
-require('classes/BBCode.php');
+require('Node.php');
+require('Node/Text.php');
+require('Node/Container.php');
+require('Node/Container/Tag.php');
+require('Node/Container/Document.php');
+
+require('BBCode.php');
