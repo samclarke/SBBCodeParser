@@ -3,7 +3,7 @@ Copyright (C) 2011, Sam Clarke (http://www.samclarke.com)
 
 SBBCodeParser is a simple BBCode parser.
 
-# Example usage:
+### Example usage:
 
 	$parser = new \SBBCodeParser\Node_Container_Document();
 
@@ -18,7 +18,7 @@ SBBCodeParser is a simple BBCode parser.
 		->detect_emoticons()
 		->get_html();
 		
-# Example of adding a custom BBCode:
+### Example of adding a custom BBCode:
 
 	$bbcode = new \SBBCodeParser\BBCode('youtube', function($content, $attribs)
 	{
@@ -32,7 +32,7 @@ SBBCodeParser is a simple BBCode parser.
 
 	$parser->add_bbcode($bbcode);
 	
-# Currently included default BBCodes:
+### Currently included default BBCodes:
 
 	b
 	i
