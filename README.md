@@ -1,4 +1,4 @@
-# SBBCodeParser v1.0
+# SBBCodeParser v1.1
 Copyright (C) 2011, Sam Clarke (http://www.samclarke.com)
 
 SBBCodeParser is a simple BBCode parser.
