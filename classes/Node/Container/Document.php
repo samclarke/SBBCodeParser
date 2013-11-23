@@ -995,6 +995,10 @@ class Node_Container_Document extends Node_Container
 	 */
 	public function detect_emoticons()
 	{
+        	if (count($this->emoticons) === 0) {
+            		return;
+        	}
+        
 		$pattern = '';
 		foreach($this->emoticons as $key => $url)
 			$pattern .= ($pattern === ''? '/(?:':'|') . preg_quote($key, '/');
