@@ -694,7 +694,7 @@ class Node_Container_Document extends Node_Container
 	 */
 	public function parse($str)
 	{
-		$str      = preg_replace('/[\r\n|\r]/', "\n", $str);
+		$str      = preg_replace('/\r\n|\r/', "\n", $str);
 		$len      = strlen($str);
 		$tag_open = false;
 		$tag_text = '';
