@@ -4,9 +4,7 @@
     "keywords": [
         "SBBCodeParser"
     ],
-  	"homepage": "https://github.com/samclarke/SBBCodeParser",
-	"canonical": "https://github.com/samclarke/SBBCodeParser",
-	"source": "https://github.com/samclarke/SBBCodeParser/tree/master",
+    "homepage": "https://github.com/samclarke/SBBCodeParser",
 	"autoload": {
 		"psr-4": {
 			"SBBCodeParser\\": "classes/"
