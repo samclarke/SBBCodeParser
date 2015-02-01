@@ -694,7 +694,7 @@ class Node_Container_Document extends Node_Container
 	 */
 	public function parse($str)
 	{
-		$str      = preg_replace('/[\r\n|\r]/', "\n", $str);
+		$str      = preg_replace('/\r\n|\r/', "\n", $str);
 		$len      = strlen($str);
 		$tag_open = false;
 		$tag_text = '';
@@ -753,6 +753,9 @@ class Node_Container_Document extends Node_Container
 				$tag_text .= $str[$i];
 		}
 
+		if ($tag_open)
+			$tag_text .= '[' . $tag;
+		
 		$this->tag_text($tag_text);
 
 		if($this->throw_errors && !$this->current_tag instanceof Node_Container_Document)
@@ -1003,7 +1006,7 @@ class Node_Container_Document extends Node_Container
 		$emoticons = $this->emoticons;
 
 		$this->loop_text_nodes(function($child) use ($pattern, $emoticons) {
-			preg_match_all($pattern,
+			@preg_match_all($pattern,
 				$child->get_text(),
 				$matches,
 				PREG_PATTERN_ORDER | PREG_OFFSET_CAPTURE);
