@@ -720,7 +720,7 @@ class Node_Container_Document extends Node_Container
 					$bits        = preg_split('/([ =])/', trim($tag), 2, PREG_SPLIT_DELIM_CAPTURE);
 					$tag_attrs   = (isset($bits[2]) ? $bits[1] . $bits[2] : '');
 					$tag_closing = ($bits[0][0] === '/');
-					$tag_name    = ($bits[0][0] === '/' ? substr($bits[0], 1) : $bits[0]);
+					$tag_name    = strtolower(($bits[0][0] === '/' ? substr($bits[0], 1) : $bits[0]));
 
 					if(isset($this->bbcodes[$tag_name]))
 					{
