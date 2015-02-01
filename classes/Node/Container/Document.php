@@ -694,7 +694,7 @@ class Node_Container_Document extends Node_Container
 	 */
 	public function parse($str)
 	{
-		$str      = preg_replace('/[\r\n|\r]/', "\n", $str);
+		$str      = preg_replace('/\r\n|\r/', "\n", $str);
 		$len      = strlen($str);
 		$tag_open = false;
 		$tag_text = '';
@@ -720,7 +720,7 @@ class Node_Container_Document extends Node_Container
 					$bits        = preg_split('/([ =])/', trim($tag), 2, PREG_SPLIT_DELIM_CAPTURE);
 					$tag_attrs   = (isset($bits[2]) ? $bits[1] . $bits[2] : '');
 					$tag_closing = ($bits[0][0] === '/');
-					$tag_name    = ($bits[0][0] === '/' ? substr($bits[0], 1) : $bits[0]);
+					$tag_name    = strtolower(($bits[0][0] === '/' ? substr($bits[0], 1) : $bits[0]));
 
 					if(isset($this->bbcodes[$tag_name]))
 					{
@@ -753,6 +753,9 @@ class Node_Container_Document extends Node_Container
 				$tag_text .= $str[$i];
 		}
 
+		if ($tag_open)
+			$tag_text .= '[' . $tag;
+		
 		$this->tag_text($tag_text);
 
 		if($this->throw_errors && !$this->current_tag instanceof Node_Container_Document)
@@ -1003,7 +1006,7 @@ class Node_Container_Document extends Node_Container
 		$emoticons = $this->emoticons;
 
 		$this->loop_text_nodes(function($child) use ($pattern, $emoticons) {
-			preg_match_all($pattern,
+			@preg_match_all($pattern,
 				$child->get_text(),
 				$matches,
 				PREG_PATTERN_ORDER | PREG_OFFSET_CAPTURE);
