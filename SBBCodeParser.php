@@ -8,7 +8,7 @@
  * @license http://www.gnu.org/licenses/lgpl.html LGPL version 3 or higher
  *
  * @TODO: Add inline/block to tags and forbid adding block elements to inline ones.
- * Maybe split the inline elemnt and put the block element inbetween?
+ * Maybe split the inline element and put the block element in between?
  * @TODO: Have options for limiting nesting of tags
  * @TODO: Have whitespace trimming options for tags
  */

@@ -6,9 +6,7 @@
     ],
     "homepage": "https://github.com/samclarke/SBBCodeParser",
 	"autoload": {
-		"psr-4": {
-			"SBBCodeParser\\": "classes/"
-		}
+		"classmap": ["SBBCodeParser.php","classes/"]
 	},
 	"authors": [
 		{
