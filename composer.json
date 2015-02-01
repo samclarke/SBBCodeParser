@@ -1,0 +1,21 @@
+{
+    "name": "samclarke/sbb-code-parser",
+    "description": "SBBCodeParser is a simple BBCode parser",
+    "keywords": [
+        "SBBCodeParser"
+    ],
+    "homepage": "https://github.com/samclarke/SBBCodeParser",
+	"autoload": {
+		"psr-0": {
+			"SBBCodeParser\\": "classes/"
+		}
+	},
+	"authors": [
+		{
+			"name": "Sam Clarke"
+		}
+	],
+    "require": {
+        "php": ">=5.3"
+    }
+}
