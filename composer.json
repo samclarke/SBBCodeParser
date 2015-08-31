@@ -1,0 +1,19 @@
+{
+    "name": "kokspflanze/sbb-code-parser",
+    "description": "fork from https://github.com/samclarke/SBBCodeParser",
+    "keywords": [
+        "SBBCodeParser"
+    ],
+    "homepage": "https://github.com/kokspflanze/SBBCodeParser",
+	"autoload": {
+		"classmap": ["SBBCodeParser.php","classes/"]
+	},
+	"authors": [
+		{
+			"name": "Sam Clarke"
+		}
+	],
+    "require": {
+        "php": ">=5.3"
+    }
+}
