@@ -1,10 +1,10 @@
 {
-    "name": "samclarke/sbb-code-parser",
-    "description": "SBBCodeParser is a simple BBCode parser",
+    "name": "kokspflanze/sbb-code-parser",
+    "description": "fork from https://github.com/samclarke/SBBCodeParser",
     "keywords": [
         "SBBCodeParser"
     ],
-    "homepage": "https://github.com/samclarke/SBBCodeParser",
+    "homepage": "https://github.com/kokspflanze/SBBCodeParser",
 	"autoload": {
 		"classmap": ["SBBCodeParser.php","classes/"]
 	},
