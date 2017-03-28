@@ -875,7 +875,7 @@ class Node_Container_Document extends Node_Container
 
 		// if this tag only has one = then there is only one attribute
 		// so add it all to default
-		if($attribs[0] == '=' && strrpos($attribs, '=') === 0)
+		if($attribs[0] == '=' && (strrpos($attribs, '=') === 0 || $attribs[0] == '='))
 			$ret['default'] = htmlentities(substr($attribs, 1), ENT_QUOTES | ENT_IGNORE, "UTF-8");
 		else
 		{
